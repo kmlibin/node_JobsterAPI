@@ -45,7 +45,40 @@ const login = async (req, res) => {
   });
 };
 
+const updateUser = async (req, res) => {
+  //remember, gets req.user from the middleware
+  //check for values
+  const { email, name, lastName, location } = req.body;
+  if (!email || !name || !lastName || !location) {
+    throw new BadRequestError("Please provide all values");
+  }
+  //get user from database
+  const user = await User.findOne({ _id: req.user.userId });
+
+  //update values
+  user.email = email;
+  user.name = name;
+  user.lastName = lastName;
+  user.location = location;
+
+  //now save the user.
+  await user.save();
+  //create token. new token gives new expiration. make your own decision on whether or not you send token. if you aren't changing any user values
+  //remember, user has userID and name. if you change name, you need a new token
+  const token = user.createJWT();
+  res.status(StatusCodes.OK).json({
+    user: {
+      email: user.email,
+      lastName: user.lastName,
+      location: user.location,
+      name: user.name,
+      token,
+    },
+  });
+};
+
 module.exports = {
   register,
   login,
+  updateUser,
 };
