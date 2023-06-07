@@ -38,6 +38,10 @@ const UserSchema = new mongoose.Schema({
 });
 
 UserSchema.pre("save", async function () {
+  //update..if user updates their information once logged in, logs out, they won't be able to log back in because .save in auth triggers the hooks
+  //(pre hook is one of them). then it re hashes the password, so the pwords don't match. this checks for the modified path, and if it isn't
+  //password, then return. if we edit name, the path will be "name"
+  if(!this.isModified('password')) return;
   const salt = await bcrypt.genSalt(10);
   this.password = await bcrypt.hash(this.password, salt);
 });
