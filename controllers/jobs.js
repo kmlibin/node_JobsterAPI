@@ -1,6 +1,8 @@
 const Job = require("../models/Job");
 const { StatusCodes } = require("http-status-codes");
 const { BadRequestError, NotFoundError } = require("../errors");
+const mongoose = require("mongoose");
+const moment = require("moment");
 
 const getAllJobs = async (req, res) => {
   //pull out query params
@@ -111,10 +113,66 @@ const deleteJob = async (req, res) => {
   res.status(StatusCodes.OK).send();
 };
 
+//has aggregation pipeline
+const showStats = async (req, res) => {
+  let stats = await Job.aggregate([
+    //stage 1, matches docs from a specific user
+    { $match: { createdBy: mongoose.Types.ObjectId(req.user.userId) } },
+    //stage 2now group them by status, and we want to count how many we have
+    { $group: { _id: "$status", count: { $sum: 1 } } },
+  ]);
+  console.log(stats); //shows {_id: 'pending, count: 28}..and has it for interview and declined as well
+  //frontend wants an object where status values are props, and value is equal to a count.
+  stats = stats.reduce((acc, curr) => {
+    const { _id: title, count } = curr;
+    acc[title] = count;
+    return acc;
+  }, {});
+  //console log of stats now shows { pending: 28, interview: 29 ...}
+  const defaultStats = {
+    pending: stats.pending || 0,
+    interview: stats.interview || 0,
+    declined: stats.declined || 0,
+  };
+
+  let monthlyApplications = await Job.aggregate([
+    { $match: { createdBy: mongoose.Types.ObjectId(req.user.userId) } },
+    {
+      //gets year and month back from mongodb
+      $group: {
+        _id: { year: { $year: "$createdAt" }, month: { $month: "$createdAt" } },
+        count: { $sum: 1 },
+      },
+    },
+    //display last month first
+    //sort, then prop name (id.year)
+    { $sort: { "_id.year": -1, "_id.month": -1 } },
+    { $limit: 6 },
+  ]);
+
+  //refactor monthlyApplications so it matches what frontend expects..send most recent month as the first item
+  monthlyApplications = monthlyApplications
+    .map((item) => {
+      const {
+        _id: { year, month },
+        count,
+      } = item;
+      const date = moment()
+        .month(month - 1)
+        .year(year)
+        .format("MMM Y");
+      return { date, count };
+    })
+    .reverse();
+
+  res.status(StatusCodes.OK).json({ defaultStats, monthlyApplications });
+};
+
 module.exports = {
   createJob,
   deleteJob,
   getAllJobs,
   updateJob,
   getJob,
+  showStats,
 };
